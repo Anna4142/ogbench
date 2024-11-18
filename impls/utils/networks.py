@@ -515,3 +515,106 @@ class GCIQEValue(nn.Module):
             return v, phi_s, phi_g
         else:
             return v
+@dataclass
+class GPTConfig:
+    """Configuration for GPT model."""
+    block_size: int = 1024
+    input_dim: int = 256
+    output_dim: int = 256
+    n_layer: int = 12
+    n_head: int = 12
+    n_embd: int = 768
+    dropout: float = 0.1
+
+
+class CausalSelfAttention(nn.Module):
+    """Causal Self-Attention module."""
+    config: GPTConfig
+
+    def setup(self):
+        assert self.config.n_embd % self.config.n_head == 0
+        self.c_attn = nn.Dense(3 * self.config.n_embd)
+        self.c_proj = nn.Dense(self.config.n_embd)
+        self.resid_dropout = nn.Dropout(self.config.dropout)
+        self.n_head = self.config.n_head
+        self.n_embd = self.config.n_embd
+
+    def __call__(self, x, deterministic=True):
+        B, T, C = x.shape
+
+        qkv = self.c_attn(x)
+        qkv = qkv.reshape(B, T, 3, self.n_head, C // self.n_head)
+        qkv = qkv.transpose(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]  # Each has shape (B, n_head, T, head_dim)
+
+        att = jnp.einsum('bhqd,bhkd->bhqk', q, k) / jnp.sqrt(k.shape[-1])
+        mask = jnp.tril(jnp.ones((T, T)))
+        att = jnp.where(mask[None, None, :, :], att, float('-inf'))
+        att = nn.softmax(att, axis=-1)
+        att = self.resid_dropout(att, deterministic=deterministic)
+
+        y = jnp.einsum('bhqk,bhvd->bhqd', att, v)
+        y = y.transpose(0, 2, 1, 3).reshape(B, T, C)
+        y = self.c_proj(y)
+        y = self.resid_dropout(y, deterministic=deterministic)
+        return y
+
+
+class MLPBlock(nn.Module):
+    """Feed-forward network for GPT."""
+    config: GPTConfig
+
+    def setup(self):
+        self.c_fc = nn.Dense(4 * self.config.n_embd)
+        self.c_proj = nn.Dense(self.config.n_embd)
+        self.dropout = nn.Dropout(self.config.dropout)
+
+    def __call__(self, x, deterministic=True):
+        x = self.c_fc(x)
+        x = nn.gelu(x)
+        x = self.c_proj(x)
+        x = self.dropout(x, deterministic=deterministic)
+        return x
+
+
+class Block(nn.Module):
+    """Transformer block."""
+    config: GPTConfig
+
+    def setup(self):
+        self.ln_1 = nn.LayerNorm()
+        self.attn = CausalSelfAttention(self.config)
+        self.ln_2 = nn.LayerNorm()
+        self.mlp = MLPBlock(self.config)
+
+    def __call__(self, x, deterministic=True):
+        x = x + self.attn(self.ln_1(x), deterministic=deterministic)
+        x = x + self.mlp(self.ln_2(x), deterministic=deterministic)
+        return x
+
+
+class GPT(nn.Module):
+    """GPT model."""
+    config: GPTConfig
+
+    def setup(self):
+        self.wte = nn.Dense(self.config.n_embd)
+        self.wpe = nn.Embed(self.config.block_size, self.config.n_embd)
+        self.drop = nn.Dropout(self.config.dropout)
+        self.h = [Block(self.config) for _ in range(self.config.n_layer)]
+        self.ln_f = nn.LayerNorm()
+        self.lm_head = nn.Dense(self.config.output_dim, use_bias=False)
+
+    def __call__(self, x, deterministic=True):
+        B, T, _ = x.shape
+        assert T <= self.config.block_size, "Cannot forward, sequence too long."
+        pos = jnp.arange(0, T)[None, :]
+
+        tok_emb = self.wte(x)
+        pos_emb = self.wpe(pos)
+        x = self.drop(tok_emb + pos_emb, deterministic=deterministic)
+        for block in self.h:
+            x = block(x, deterministic=deterministic)
+        x = self.ln_f(x)
+        logits = self.lm_head(x)
+        return logits
