@@ -515,7 +515,7 @@ class GCIQEValue(nn.Module):
             return v, phi_s, phi_g
         else:
             return v
-@dataclass
+
 class GPTConfig:
     """Configuration for GPT model."""
     block_size: int = 1024
