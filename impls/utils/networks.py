@@ -622,7 +622,7 @@ class GPT(nn.Module):
         self.lm_head = nn.Dense(self.config.output_dim, use_bias=False)
 
     def __call__(self, x, deterministic=True):
-        B, T, _ = x.shape
+        B, T = x.shape
         assert T <= self.config.block_size, "Cannot forward, sequence too long."
         pos = jnp.arange(0, T)[None, :]
 
