@@ -8,7 +8,7 @@ import optax
 from functools import partial
 from einops import rearrange
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import MLP, GPT ,CustomMLP # Import GPT from networks.py
+from utils.networks import CustomMLP as MLP, GPT # Import GPT from networks.py
 
 
 class BETAgent(flax.struct.PyTreeNode):
