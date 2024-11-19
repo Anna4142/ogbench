@@ -8,7 +8,7 @@ import optax
 from functools import partial
 from einops import rearrange
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import MLP, GPT  # Import GPT from networks.py
+from utils.networks import MLP, GPT  # Ensure GPT is imported from networks.py
 from flax import linen as nn
 
 
@@ -25,40 +25,57 @@ class BETAgent(flax.struct.PyTreeNode):
     def loss(self, batch, params):
         """Compute the loss for behavior cloning using transformer architecture."""
         # Prepare the input sequence
-        observations = batch['observations']  # Shape: (batch_size, seq_length)
-        actions = batch['actions']  # Shape: (batch_size, seq_length, act_dim)
+        observations = batch['observations']  # Shape: (batch_size, seq_length, input_dim=256)
+        actions = batch['actions']            # Shape: (batch_size, seq_length, act_dim=2)
 
         # Pass through GPT model
         gpt_output = self.network.apply_fn({'params': params}, 'gpt', x=observations, deterministic=True)
+        # Shape: (batch_size, seq_length=29, n_embd=768)
 
         # Map GPT output to classification logits and offset predictions
         cbet_preds = self.network.apply_fn({'params': params}, 'map_to_preds', x=gpt_output, deterministic=True)
-        cbet_logits, cbet_offsets = jnp.split(
-            cbet_preds, [self.config.n_clusters], axis=-1
-        )
+        # Shape: (batch_size, seq_length=29, (act_dim + 1) * n_clusters=30)
+
+        # Split predictions into logits and offsets
+        cbet_logits, cbet_offsets = jnp.split(cbet_preds, [self.config.n_clusters], axis=-1)
+        # cbet_logits: (batch_size, seq_length=29, n_clusters=10)
+        # cbet_offsets: (batch_size, seq_length=29, (act_dim + 1) * n_clusters=30)
+
+        # Rearrange offsets to (batch_size, seq_length=29, n_clusters=10, act_dim=2)
         cbet_offsets = rearrange(
             cbet_offsets, 'N T (K A) -> N T K A', K=self.config.n_clusters
         )
+        # cbet_offsets: (batch_size, seq_length=29, n_clusters=10, act_dim=2)
 
         # Compute probabilities
         cbet_probs = nn.softmax(cbet_logits, axis=-1)
+        # cbet_probs: (batch_size, seq_length=29, n_clusters=10)
 
         if actions is not None:
-            N, T, _ = actions.shape
+            N, T, _ = actions.shape  # N=batch_size, T=29
 
             # Find closest cluster centers for true actions
             action_bins = self.find_closest_cluster(actions)
-            true_offsets = actions - self.cluster_centers[action_bins]
+            # action_bins: (N, T)
 
+            true_offsets = actions - self.cluster_centers[action_bins]
+            # true_offsets: (N, T, act_dim=2)
+
+            # Gather predicted offsets based on action_bins
             predicted_offsets = cbet_offsets[jnp.arange(N)[:, None], jnp.arange(T), action_bins]
+            # predicted_offsets: (N, T, act_dim=2)
 
             # Compute losses
             offset_loss = jnp.mean((predicted_offsets - true_offsets) ** 2)
+            # Mean Squared Error for offsets
+
             cbet_loss = self.focal_loss(
-                logits=cbet_logits.reshape(-1, self.config.n_clusters),
-                targets=action_bins.reshape(-1),
+                logits=cbet_logits.reshape(-1, self.config.n_clusters),  # Shape: (N*T, n_clusters=10)
+                targets=action_bins.reshape(-1),                        # Shape: (N*T,)
                 gamma=self.config.gamma
             )
+            # Focal loss for classification
+
             total_loss = cbet_loss + self.config.offset_loss_multiplier * offset_loss
 
             loss_info = {
@@ -82,7 +99,7 @@ class BETAgent(flax.struct.PyTreeNode):
             return loss
 
         # Compute gradients and loss info
-        grads, info = jax.value_and_grad(self.loss, has_aux=True)(batch, self.network.params)
+        loss, (grads, info) = jax.value_and_grad(self.loss, has_aux=True)(batch, self.network.params)
 
         # Update network parameters
         new_network = self.network.apply_gradients(grads=grads)
@@ -93,24 +110,41 @@ class BETAgent(flax.struct.PyTreeNode):
     def sample_actions(self, observations, seed=None):
         """Sample actions using the trained transformer model."""
         gpt_output = self.network.apply_fn({'params': self.network.params}, 'gpt', x=observations, deterministic=True)
+        # Shape: (batch_size, seq_length=29, n_embd=768)
 
         cbet_preds = self.network.apply_fn({'params': self.network.params}, 'map_to_preds', x=gpt_output, deterministic=True)
+        # Shape: (batch_size, seq_length=29, (act_dim + 1) * n_clusters=30)
+
         cbet_logits, cbet_offsets = jnp.split(
             cbet_preds, [self.config.n_clusters], axis=-1
         )
+        # cbet_logits: (batch_size, seq_length=29, n_clusters=10)
+        # cbet_offsets: (batch_size, seq_length=29, (act_dim + 1) * n_clusters=30)
+
+        # Rearrange offsets to (batch_size, seq_length=29, n_clusters=10, act_dim=2)
         cbet_offsets = rearrange(
             cbet_offsets, 'N T (K A) -> N T K A', K=self.config.n_clusters
         )
 
         cbet_probs = nn.softmax(cbet_logits, axis=-1)
+        # cbet_probs: (batch_size, seq_length=29, n_clusters=10)
 
         # Sample cluster centers
-        N, T, _ = observations.shape
+        N, T, _ = observations.shape  # N=batch_size, T=29
         sampled_centers_idx = jax.random.categorical(seed, cbet_logits, axis=-1)
-        sampled_offsets = cbet_offsets[jnp.arange(N)[:, None], jnp.arange(T), sampled_centers_idx]
-        centers = self.cluster_centers[sampled_centers_idx]
+        # sampled_centers_idx: (N, T)
 
+        # Gather sampled offsets
+        sampled_offsets = cbet_offsets[jnp.arange(N)[:, None], jnp.arange(T), sampled_centers_idx]
+        # sampled_offsets: (N, T, act_dim=2)
+
+        # Gather sampled cluster centers
+        centers = self.cluster_centers[sampled_centers_idx]
+        # centers: (N, T, act_dim=2)
+
+        # Compute final actions
         actions = centers + sampled_offsets
+        # actions: (N, T, act_dim=2)
 
         return actions
 
@@ -153,12 +187,12 @@ class BETAgent(flax.struct.PyTreeNode):
         )
 
         network_info = dict(
-            gpt=(gpt_def, ex_observations),
-            map_to_preds=(map_to_preds_def, ex_actions)  # Adjust based on actual input
+            gpt=(gpt_def, ex_observations),  # ex_observations: (1, 29, 256)
+            map_to_preds=(map_to_preds_def, jnp.zeros((1, 29, config.n_embd)))  # Dummy input with correct shape
         )
 
         networks = {k: v[0] for k, v in network_info.items()}
-        network_args = {k: v[1] for k, v in network_info.items()}
+        network_args = {k: v[1] for k, v in network_info.items() if v[1] is not None}
 
         # Initialize ModuleDict with networks
         network_def = ModuleDict(modules=networks)
@@ -210,7 +244,7 @@ def get_config():
             n_head=12,  # Number of attention heads
             n_embd=768,  # Embedding dimension
             dropout=0.1,  # Dropout rate
-            vocab_size=10000,
+            #vocab_size=10000,
 
             # Dataset hyperparameters.
             dataset_class='GCDataset',  # Dataset class name.

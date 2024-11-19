@@ -542,7 +542,7 @@ class GPTConfig:
         self.n_head = config.n_head
         self.n_embd = config.n_embd
         self.dropout = config.dropout
-        self.vocab_size = config.vocab_size  # Added vocab_size
+        #self.vocab_size = config.vocab_size  # Added vocab_size
 
 
 class CausalSelfAttention(nn.Module):
@@ -617,7 +617,7 @@ class GPT(nn.Module):
 
     def setup(self):
         # Changed wte to nn.Embed for token embeddings
-        self.wte = nn.Embed(num_embeddings=self.config.vocab_size, features=self.config.n_embd)
+        self.wte = nn.Dense(features=self.config.n_embd)
         self.wpe = nn.Embed(num_embeddings=self.config.block_size, features=self.config.n_embd)
         self.drop = nn.Dropout(rate=self.config.dropout)
         self.h = [Block(self.config) for _ in range(self.config.n_layer)]
