@@ -150,7 +150,7 @@ class BETAgent(flax.struct.PyTreeNode):
         )
 
         network_info = dict(
-            gpt=(gpt_def, ex_observations),
+            gpt=(gpt_def, (ex_observations, None)),
             map_to_preds=(map_to_preds_def, jnp.zeros((1, config.n_embd))),  # Dummy input
         )
 
