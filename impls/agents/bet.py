@@ -177,3 +177,26 @@ class BehaviorTransformerAgent(flax.struct.PyTreeNode):
             cluster_centers=cluster_centers,
             have_fit_kmeans=False
         )
+def get_config():
+    config = ml_collections.ConfigDict(
+        dict(
+            # Agent hyperparameters
+            agent_name='bet',  # Agent name
+            lr=3e-4,  # Learning rate
+            batch_size=1024,  # Batch size
+            gpt_config=GPTConfig(
+                block_size=1024,
+                input_dim=256,
+                output_dim=256,
+                n_layer=12,
+                n_head=12,
+                n_embd=768,
+                dropout=0.1
+            ),  # GPT configuration
+            n_clusters=10,  # Number of clusters
+            gamma=2.0,  # Focal loss gamma
+            offset_loss_multiplier=1.0,  # Offset loss multiplier
+            act_dim=2,  # Action dimension
+        )
+    )
+    return config
