@@ -145,7 +145,7 @@ class BETAgent(flax.struct.PyTreeNode):
         map_to_preds_def = MLP(
             hidden_dims=features,
             activate_final=False,
-            layer_norm=config['layer_norm']
+            layer_norm=config['layer_norm'],
 
         )
 
