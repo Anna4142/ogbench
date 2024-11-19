@@ -5,6 +5,7 @@ from agents.gcivl import GCIVLAgent
 from agents.hiql import HIQLAgent
 from agents.qrl import QRLAgent
 from agents.sac import SACAgent
+from agents.bet import BETAgent  # Add this line to import BETAgent
 
 agents = dict(
     crl=CRLAgent,
@@ -14,4 +15,5 @@ agents = dict(
     hiql=HIQLAgent,
     qrl=QRLAgent,
     sac=SACAgent,
+    bet=BETAgent,  # Add this line to register BETAgent
 )
