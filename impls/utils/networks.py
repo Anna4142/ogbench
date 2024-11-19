@@ -516,15 +516,6 @@ class GCIQEValue(nn.Module):
         else:
             return v
 
-class GPTConfig:
-    """Configuration for GPT model."""
-    block_size: int = 1024
-    input_dim: int = 256
-    output_dim: int = 256
-    n_layer: int = 12
-    n_head: int = 12
-    n_embd: int = 768
-    dropout: float = 0.1
 
 
 class CausalSelfAttention(nn.Module):

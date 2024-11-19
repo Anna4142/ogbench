@@ -1,20 +1,18 @@
-from typing import Any, Dict, Optional, Tuple
-
+from typing import Any
 import flax
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
-import optax
-from flax.training import train_state
-from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import MLP, GPT, GPTConfig, Identity
-from einops import rearrange
-from functools import partial
 import ml_collections
-import distrax
+import optax
+from functools import partial
+from einops import rearrange
+from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
+from utils.networks import MLP, GPT  # Import GPT from networks.py
 
-class BehaviorTransformerAgent(flax.struct.PyTreeNode):
-    """Behavior Transformer agent using a GPT model."""
+
+class BETAgent(flax.struct.PyTreeNode):
+    """Behavior Transformer (BET) agent using a GPT model."""
 
     rng: Any
     network: Any
@@ -27,7 +25,6 @@ class BehaviorTransformerAgent(flax.struct.PyTreeNode):
         # Prepare the input sequence
         observations = batch['observations']  # Shape: (batch_size, seq_length, obs_dim)
         actions = batch['actions']  # Shape: (batch_size, seq_length, act_dim)
-        goals = batch.get('goals', None)  # Optional
 
         # Pass through GPT model
         gpt_output = self.network.select('gpt')(observations, params=grad_params)
@@ -44,16 +41,9 @@ class BehaviorTransformerAgent(flax.struct.PyTreeNode):
         # Compute probabilities
         cbet_probs = nn.softmax(cbet_logits, axis=-1)
 
-        # Sample cluster centers
-        N, T, _ = cbet_probs.shape
-        sampled_centers_idx = jax.random.categorical(self.rng, cbet_logits, axis=-1)
-        sampled_offsets = cbet_offsets[jnp.arange(N)[:, None], jnp.arange(T), sampled_centers_idx]
-        centers = self.cluster_centers[sampled_centers_idx]
-
-        # Reconstruct actions
-        reconstructed_actions = centers + sampled_offsets
-
         if actions is not None:
+            N, T, _ = actions.shape
+
             # Find closest cluster centers for true actions
             action_bins = self.find_closest_cluster(actions)
             true_offsets = actions - self.cluster_centers[action_bins]
@@ -110,8 +100,9 @@ class BehaviorTransformerAgent(flax.struct.PyTreeNode):
         cbet_probs = nn.softmax(cbet_logits, axis=-1)
 
         # Sample cluster centers
+        N, T, _ = observations.shape
         sampled_centers_idx = jax.random.categorical(seed, cbet_logits, axis=-1)
-        sampled_offsets = cbet_offsets[jnp.arange(observations.shape[0])[:, None], jnp.arange(cbet_probs.shape[1]), sampled_centers_idx]
+        sampled_offsets = cbet_offsets[jnp.arange(N)[:, None], jnp.arange(T), sampled_centers_idx]
         centers = self.cluster_centers[sampled_centers_idx]
 
         actions = centers + sampled_offsets
@@ -141,12 +132,12 @@ class BehaviorTransformerAgent(flax.struct.PyTreeNode):
 
     @classmethod
     def create(cls, seed, ex_observations, ex_actions, config):
-        """Initialize the Behavior Transformer Agent."""
+        """Initialize the BETAgent."""
         rng = jax.random.PRNGKey(seed)
         rng, init_rng = jax.random.split(rng, 2)
 
-        # Define GPT model
-        gpt_def = GPT(config.gpt_config)
+        # Define GPT model using parameters from config
+        gpt_def = GPT(config)
 
         # Define mapping from GPT output to CBET predictions
         map_to_preds_def = MLP(
@@ -156,7 +147,7 @@ class BehaviorTransformerAgent(flax.struct.PyTreeNode):
 
         network_info = dict(
             gpt=(gpt_def, ex_observations),
-            map_to_preds=(map_to_preds_def, gpt_def.apply({'params': {}}, ex_observations)),
+            map_to_preds=(map_to_preds_def, None),
         )
 
         networks = {k: v[0] for k, v in network_info.items()}
@@ -167,7 +158,7 @@ class BehaviorTransformerAgent(flax.struct.PyTreeNode):
         network_params = network_def.init(init_rng, **network_args)['params']
         network = TrainState.create(network_def, network_params, tx=network_tx)
 
-        # Initialize cluster centers (placeholder)
+        # Initialize cluster centers (should be set after fitting KMeans on actions)
         cluster_centers = jnp.zeros((config.n_clusters, config.act_dim))
 
         return cls(
@@ -177,26 +168,29 @@ class BehaviorTransformerAgent(flax.struct.PyTreeNode):
             cluster_centers=cluster_centers,
             have_fit_kmeans=False
         )
-    def get_config():
-        config = ml_collections.ConfigDict(
-            dict(
-                # Agent hyperparameters
-                agent_name='bet',  # Agent name
-                lr=3e-4,  # Learning rate
-                batch_size=1024,  # Batch size
-                gpt_config=GPTConfig(
-                    block_size=1024,
-                    input_dim=256,
-                    output_dim=256,
-                    n_layer=12,
-                    n_head=12,
-                    n_embd=768,
-                    dropout=0.1
-                ),  # GPT configuration
-                n_clusters=10,  # Number of clusters
-                gamma=2.0,  # Focal loss gamma
-                offset_loss_multiplier=1.0,  # Offset loss multiplier
-                act_dim=2,  # Action dimension
-            )
+
+
+def get_config():
+    """Get the default configuration for the BETAgent."""
+    config = ml_collections.ConfigDict(
+        dict(
+            # Agent hyperparameters
+            agent_name='bet',  # Agent name
+            lr=3e-4,  # Learning rate
+            batch_size=1024,  # Batch size
+            n_clusters=10,  # Number of clusters
+            gamma=2.0,  # Focal loss gamma
+            offset_loss_multiplier=1.0,  # Offset loss multiplier
+            act_dim=2,  # Action dimension
+
+            # GPT configuration parameters
+            block_size=1024,  # Maximum sequence length
+            input_dim=256,  # Input dimension
+            output_dim=256,  # Output dimension
+            n_layer=12,  # Number of transformer layers
+            n_head=12,  # Number of attention heads
+            n_embd=768,  # Embedding dimension
+            dropout=0.1,  # Dropout rate
         )
-        return config
+    )
+    return config
