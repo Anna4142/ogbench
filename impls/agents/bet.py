@@ -210,6 +210,7 @@ def get_config():
             n_head=12,  # Number of attention heads
             n_embd=768,  # Embedding dimension
             dropout=0.1,  # Dropout rate
+            vocab_size=10000,
 
             # Dataset hyperparameters.
             dataset_class='GCDataset',  # Dataset class name.
