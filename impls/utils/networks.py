@@ -542,6 +542,8 @@ class GPTConfig:
         self.n_head = config.n_head
         self.n_embd = config.n_embd
         self.dropout = config.dropout
+        self.vocab_size = config.vocab_size  # Added vocab_size
+
 
 class CausalSelfAttention(nn.Module):
     """Causal Self-Attention module."""
@@ -614,23 +616,24 @@ class GPT(nn.Module):
     config: GPTConfig
 
     def setup(self):
-        self.wte = nn.Dense(self.config.n_embd)
-        self.wpe = nn.Embed(self.config.block_size, self.config.n_embd)
-        self.drop = nn.Dropout(self.config.dropout)
+        # Changed wte to nn.Embed for token embeddings
+        self.wte = nn.Embed(num_embeddings=self.config.vocab_size, features=self.config.n_embd)
+        self.wpe = nn.Embed(num_embeddings=self.config.block_size, features=self.config.n_embd)
+        self.drop = nn.Dropout(rate=self.config.dropout)
         self.h = [Block(self.config) for _ in range(self.config.n_layer)]
         self.ln_f = nn.LayerNorm()
         self.lm_head = nn.Dense(self.config.output_dim, use_bias=False)
 
     def __call__(self, x, deterministic=True):
         B, T = x.shape
-        assert T <= self.config.block_size, "Cannot forward, sequence too long."
-        pos = jnp.arange(0, T)[None, :]
+        assert T <= self.config.block_size, f"Cannot forward, sequence length {T} exceeds block size {self.config.block_size}."
+        pos = jnp.arange(0, T)[None, :]  # Shape: (1, T)
 
-        tok_emb = self.wte(x)
-        pos_emb = self.wpe(pos)
-        x = self.drop(tok_emb + pos_emb, deterministic=deterministic)
+        tok_emb = self.wte(x)  # Shape: (B, T, n_embd)
+        pos_emb = self.wpe(pos)  # Shape: (1, T, n_embd)
+        x = self.drop(tok_emb + pos_emb, deterministic=deterministic)  # Shape: (B, T, n_embd)
         for block in self.h:
             x = block(x, deterministic=deterministic)
-        x = self.ln_f(x)
-        logits = self.lm_head(x)
+        x = self.ln_f(x)  # Shape: (B, T, n_embd)
+        logits = self.lm_head(x)  # Shape: (B, T, output_dim)
         return logits
