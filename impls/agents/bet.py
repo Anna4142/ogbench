@@ -170,6 +170,7 @@ class BETAgent(flax.struct.PyTreeNode):
         return jnp.mean(loss)
 
     @classmethod
+    @classmethod
     def create(cls, seed, ex_observations, ex_actions, config):
         """Initialize the BETAgent."""
         rng = jax.random.PRNGKey(seed)
@@ -194,18 +195,10 @@ class BETAgent(flax.struct.PyTreeNode):
         networks = {k: v[0] for k, v in network_info.items()}
         network_args = {k: v[1] for k, v in network_info.items() if v[1] is not None}
 
-        # Initialize ModuleDict with networks
-        network_def = ModuleDict(modules=networks)
-        network_tx = optax.adam(learning_rate=config.lr)
-
-        # Initialize network parameters
+        network_def = ModuleDict(networks)
+        network_tx = optax.adam(learning_rate=config['lr'])
         network_params = network_def.init(init_rng, **network_args)['params']
-        network = TrainState.create(
-            apply_fn=network_def.apply,
-            params=network_params,
-            tx=network_tx
-        )
-
+        network = TrainState.create(network_def, network_params, tx=network_tx)
         # Initialize cluster centers (should be set after fitting KMeans on actions)
         cluster_centers = jnp.zeros((config.n_clusters, config.act_dim))
 
