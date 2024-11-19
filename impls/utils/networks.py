@@ -63,8 +63,10 @@ class MLP(nn.Module):
 
 class CustomMLP(nn.Module):
     hidden_dims: Sequence[int]
-    output_dim: int
-    activation_fn: Callable = nn.relu
+    activations: Any = nn.gelu
+    activate_final: bool = False
+    kernel_init: Any = default_init()
+    layer_norm: bool = False
 
     @nn.compact
     def __call__(self, x):

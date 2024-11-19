@@ -8,7 +8,8 @@ import optax
 from functools import partial
 from einops import rearrange
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import CustomMLP as MLP, GPT # Import GPT from networks.py
+from utils.networks import MLP, GPT # Import GPT from networks.py
+from flax import linen as nn
 
 
 class BETAgent(flax.struct.PyTreeNode):
@@ -140,9 +141,10 @@ class BETAgent(flax.struct.PyTreeNode):
         gpt_def = GPT(config)
 
         # Define mapping from GPT output to CBET predictions
-        map_to_preds_def = MLP(
-            hidden_dims=[],
-            output_dim=(config.act_dim + 1) * config.n_clusters
+        features = config.hidden_dims + [(config.act_dim + 1) * config.n_clusters]
+        map_to_preds_def = nn.MLP(
+            features=features,
+            activation=nn.relu,
         )
 
         network_info = dict(
@@ -184,7 +186,7 @@ def get_config():
             offset_loss_multiplier=1.0,  # Offset loss multiplier
             act_dim=2,  # Action dimension
             discount=0.99,  # Discount factor
-
+            hidden_dims=[256, 256],
             discrete=False,  # Whether the action space is discrete
 
             # GPT configuration parameters
