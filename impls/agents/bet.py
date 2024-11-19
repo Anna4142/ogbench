@@ -8,7 +8,7 @@ import optax
 from functools import partial
 from einops import rearrange
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import MLP, GPT  # Import GPT from networks.py
+from utils.networks import MLP, GPT ,CustomMLP # Import GPT from networks.py
 
 
 class BETAgent(flax.struct.PyTreeNode):
@@ -140,7 +140,7 @@ class BETAgent(flax.struct.PyTreeNode):
         gpt_def = GPT(config)
 
         # Define mapping from GPT output to CBET predictions
-        map_to_preds_def = MLP(
+        map_to_preds_def = CustomMLP(
             hidden_dims=[],
             output_dim=(config.act_dim + 1) * config.n_clusters
         )

@@ -5,7 +5,8 @@ import flax
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
-
+from flax import linen as nn
+from typing import Sequence, Callable
 
 def default_init(scale=1.0):
     """Default kernel initializer."""
@@ -59,6 +60,19 @@ class MLP(nn.Module):
                     x = nn.LayerNorm()(x)
         return x
 
+
+class CustomMLP(nn.Module):
+    hidden_dims: Sequence[int]
+    output_dim: int
+    activation_fn: Callable = nn.relu
+
+    @nn.compact
+    def __call__(self, x):
+        for dim in self.hidden_dims:
+            x = nn.Dense(features=dim)(x)
+            x = self.activation_fn(x)
+        x = nn.Dense(features=self.output_dim)(x)
+        return x
 
 class LengthNormalize(nn.Module):
     """Length normalization layer.
