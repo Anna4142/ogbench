@@ -142,7 +142,7 @@ class BETAgent(flax.struct.PyTreeNode):
 
         # Define mapping from GPT output to CBET predictions
         features = config.hidden_dims + [(config.act_dim + 1) * config.n_clusters]
-        map_to_preds_def = nn.MLP(
+        map_to_preds_def = MLP(
             features=features,
             activation=nn.relu,
         )
