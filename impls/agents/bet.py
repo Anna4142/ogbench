@@ -145,7 +145,7 @@ class BETAgent(flax.struct.PyTreeNode):
         map_to_preds_def = MLP(
             hidden_dims=features,
             activate_final=False,
-            layer_norm=config['layer_norm'],
+            layer_norm=config['layer_norm']
 
         )
 
@@ -190,7 +190,7 @@ def get_config():
             discount=0.99,  # Discount factor
             hidden_dims=[256, 256],
             discrete=False,  # Whether the action space is discrete
-            layer_norm=True
+            layer_norm=True,
 
             # GPT configuration parameters
             block_size=1024,  # Maximum sequence length
