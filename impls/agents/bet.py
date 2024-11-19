@@ -175,6 +175,7 @@ def get_config():
     config = ml_collections.ConfigDict(
         dict(
             # Agent hyperparameters
+            # Agent hyperparameters
             agent_name='bet',  # Agent name
             lr=3e-4,  # Learning rate
             batch_size=1024,  # Batch size
@@ -182,6 +183,10 @@ def get_config():
             gamma=2.0,  # Focal loss gamma
             offset_loss_multiplier=1.0,  # Offset loss multiplier
             act_dim=2,  # Action dimension
+            discount=0.99,  # Discount factor
+            frame_stack=1,  # Number of frames to stack
+
+            discrete=False,  # Whether the action space is discrete
 
             # GPT configuration parameters
             block_size=1024,  # Maximum sequence length
