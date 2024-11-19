@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict
 import flax
 import flax.linen as nn
 import jax
@@ -8,30 +8,31 @@ import optax
 from functools import partial
 from einops import rearrange
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
-from utils.networks import MLP, GPT # Import GPT from networks.py
+from utils.networks import MLP, GPT  # Import GPT from networks.py
 from flax import linen as nn
 
 
+@flax.struct.dataclass
 class BETAgent(flax.struct.PyTreeNode):
     """Behavior Transformer (BET) agent using a GPT model."""
 
     rng: Any
-    network: Any
+    network: TrainState
     config: Any = nonpytree_field()
     cluster_centers: jnp.ndarray
     have_fit_kmeans: bool
 
-    def loss(self, batch, grad_params):
+    def loss(self, batch, params):
         """Compute the loss for behavior cloning using transformer architecture."""
         # Prepare the input sequence
-        observations = batch['observations']  # Shape: (batch_size, seq_length, obs_dim)
+        observations = batch['observations']  # Shape: (batch_size, seq_length)
         actions = batch['actions']  # Shape: (batch_size, seq_length, act_dim)
 
         # Pass through GPT model
-        gpt_output = self.network.select('gpt')(observations, params=grad_params)
+        gpt_output = self.network.apply_fn({'params': params}, 'gpt', x=observations, deterministic=True)
 
         # Map GPT output to classification logits and offset predictions
-        cbet_preds = self.network.select('map_to_preds')(gpt_output, params=grad_params)
+        cbet_preds = self.network.apply_fn({'params': params}, 'map_to_preds', x=gpt_output, deterministic=True)
         cbet_logits, cbet_offsets = jnp.split(
             cbet_preds, [self.config.n_clusters], axis=-1
         )
@@ -76,21 +77,24 @@ class BETAgent(flax.struct.PyTreeNode):
     @jax.jit
     def update(self, batch):
         """Update the agent's parameters."""
-        new_rng, rng = jax.random.split(self.rng)
+        def loss_fn(params):
+            loss, _ = self.loss(batch, params)
+            return loss
 
-        def loss_fn(grad_params):
-            return self.loss(batch, grad_params)
+        # Compute gradients and loss info
+        grads, info = jax.value_and_grad(self.loss, has_aux=True)(batch, self.network.params)
 
-        new_network, info = self.network.apply_loss_fn(loss_fn=loss_fn)
+        # Update network parameters
+        new_network = self.network.apply_gradients(grads=grads)
 
-        return self.replace(network=new_network, rng=new_rng), info
+        return self.replace(network=new_network), info
 
     @jax.jit
     def sample_actions(self, observations, seed=None):
         """Sample actions using the trained transformer model."""
-        gpt_output = self.network.select('gpt')(observations)
+        gpt_output = self.network.apply_fn({'params': self.network.params}, 'gpt', x=observations, deterministic=True)
 
-        cbet_preds = self.network.select('map_to_preds')(gpt_output)
+        cbet_preds = self.network.apply_fn({'params': self.network.params}, 'map_to_preds', x=gpt_output, deterministic=True)
         cbet_logits, cbet_offsets = jnp.split(
             cbet_preds, [self.config.n_clusters], axis=-1
         )
@@ -145,28 +149,34 @@ class BETAgent(flax.struct.PyTreeNode):
         map_to_preds_def = MLP(
             hidden_dims=features,
             activate_final=False,
-            layer_norm=config['layer_norm']
-
+            layer_norm=config.layer_norm
         )
 
         network_info = dict(
             gpt=(gpt_def, ex_observations),
-            map_to_preds=(map_to_preds_def, jnp.zeros((1, config.n_embd))),  # Dummy input
+            map_to_preds=(map_to_preds_def, ex_actions)  # Adjust based on actual input
         )
 
         networks = {k: v[0] for k, v in network_info.items()}
-        network_args = {k: v[1] for k, v in network_info.items() if v[1] is not None}
+        network_args = {k: v[1] for k, v in network_info.items()}
 
-        network_def = ModuleDict(networks)
+        # Initialize ModuleDict with networks
+        network_def = ModuleDict(modules=networks)
         network_tx = optax.adam(learning_rate=config.lr)
+
+        # Initialize network parameters
         network_params = network_def.init(init_rng, **network_args)['params']
-        network = TrainState.create(network_def, network_params, tx=network_tx)
+        network = TrainState.create(
+            apply_fn=network_def.apply,
+            params=network_params,
+            tx=network_tx
+        )
 
         # Initialize cluster centers (should be set after fitting KMeans on actions)
         cluster_centers = jnp.zeros((config.n_clusters, config.act_dim))
 
         return cls(
-            rng,
+            rng=rng,
             network=network,
             config=config,
             cluster_centers=cluster_centers,
