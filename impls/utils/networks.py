@@ -516,7 +516,16 @@ class GCIQEValue(nn.Module):
         else:
             return v
 
-
+class GPTConfig:
+    """Configuration for GPT model."""
+    def __init__(self, config):
+        self.block_size = config.block_size
+        self.input_dim = config.input_dim
+        self.output_dim = config.output_dim
+        self.n_layer = config.n_layer
+        self.n_head = config.n_head
+        self.n_embd = config.n_embd
+        self.dropout = config.dropout
 
 class CausalSelfAttention(nn.Module):
     """Causal Self-Attention module."""
