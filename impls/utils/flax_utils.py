@@ -35,13 +35,13 @@ class ModuleDict(nn.Module):
             if kwargs.keys() != self.modules.keys():
                 raise ValueError(
                     f'When `name` is not specified, kwargs must contain the arguments for each module. '
-                    f'Got kwargs keys {kwargs.keys()} but module keys {self.modules.keys()}'
+                    f'Got kwargs keys {list(kwargs.keys())} but module keys {list(self.modules.keys())}'
                 )
             out = {}
             for key, value in kwargs.items():
                 if isinstance(value, Mapping):
                     out[key] = self.modules[key](**value)
-                elif isinstance(value, Sequence):
+                elif isinstance(value, Sequence) and not isinstance(value, str):
                     out[key] = self.modules[key](*value)
                 else:
                     out[key] = self.modules[key](value)
