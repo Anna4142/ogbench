@@ -32,19 +32,19 @@ class ModuleDict(nn.Module):
         Otherwise, call with `name=<module_name>` and provide the arguments for that module.
         """
         if name is None:
-            if kwargs.keys() != self.modules.keys():
+            if set(kwargs.keys()) != set(self.modules.keys()):
                 raise ValueError(
-                    f'When `name` is not specified, kwargs must contain the arguments for each module. '
-                    f'Got kwargs keys {list(kwargs.keys())} but module keys {list(self.modules.keys())}'
+                    f"When `name` is not specified, kwargs must contain the arguments for each module. "
+                    f"Got kwargs keys {list(kwargs.keys())} but module keys {list(self.modules.keys())}"
                 )
             out = {}
             for key, value in kwargs.items():
+                module = self.modules[key]
                 if isinstance(value, Mapping):
-                    out[key] = self.modules[key](**value)
-                elif isinstance(value, Sequence) and not isinstance(value, str):
-                    out[key] = self.modules[key](*value)
+                    out[key] = module(**value)
                 else:
-                    out[key] = self.modules[key](value)
+                    # Pass the entire tensor as a single argument
+                    out[key] = module(value)
             return out
 
         return self.modules[name](*args, **kwargs)
