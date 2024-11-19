@@ -170,6 +170,7 @@ class BETAgent(flax.struct.PyTreeNode):
         return jnp.mean(loss)
 
     @classmethod
+    @classmethod
     def create(cls, seed, ex_observations, ex_actions, config):
         """Initialize the BETAgent."""
         rng = jax.random.PRNGKey(seed)
@@ -200,7 +201,10 @@ class BETAgent(flax.struct.PyTreeNode):
 
         # Initialize network parameters
         network_params = network_def.init(init_rng, **network_args)['params']
+
+        # Initialize network state
         network = TrainState.create(
+            model_def=network_def,  # Provide the model definition
             apply_fn=network_def.apply,
             params=network_params,
             tx=network_tx
