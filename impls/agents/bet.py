@@ -143,8 +143,10 @@ class BETAgent(flax.struct.PyTreeNode):
         # Define mapping from GPT output to CBET predictions
         features = config.hidden_dims + [(config.act_dim + 1) * config.n_clusters]
         map_to_preds_def = MLP(
-            features=features,
-            activation=nn.relu,
+            hidden_dims=features,
+            activate_final=False,
+            layer_norm=config['layer_norm']
+
         )
 
         network_info = dict(
@@ -188,6 +190,7 @@ def get_config():
             discount=0.99,  # Discount factor
             hidden_dims=[256, 256],
             discrete=False,  # Whether the action space is discrete
+            layer_norm=True
 
             # GPT configuration parameters
             block_size=1024,  # Maximum sequence length
