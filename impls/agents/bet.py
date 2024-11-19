@@ -197,7 +197,7 @@ def get_config():
             dropout=0.1,  # Dropout rate
 
             # Dataset hyperparameters.
-            dataset_class='HGCDataset',  # Dataset class name.
+            dataset_class='GCDataset',  # Dataset class name.
             value_p_curgoal=0.2,  # Probability of using the current state as the value goal.
             value_p_trajgoal=0.5,  # Probability of using a future state in the same trajectory as the value goal.
             value_p_randomgoal=0.3,  # Probability of using a random state as the value goal.
