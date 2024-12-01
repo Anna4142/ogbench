@@ -179,7 +179,7 @@ class BETAgent(flax.struct.PyTreeNode):
         # Define GPT model using parameters from config
         gpt_def = GPT(config)
 
-        # Define mapping from GPT output to CBET predictions
+        # Define mapping from GPT output to BET predictions
         features = config.hidden_dims + [(config.act_dim + 1) * config.n_clusters]
         map_to_preds_def = MLP(
             hidden_dims=features,
@@ -189,7 +189,7 @@ class BETAgent(flax.struct.PyTreeNode):
 
         network_info = dict(
             gpt=(gpt_def, ex_observations),  # ex_observations: (1, 29, 256)
-            map_to_preds=(map_to_preds_def, jnp.zeros((1, 29, config.n_embd)))  # Dummy input with correct shape
+            map_to_preds=(map_to_preds_def, ex_actions)  # Dummy input with correct shape
         )
 
         networks = {k: v[0] for k, v in network_info.items()}
