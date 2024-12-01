@@ -1,6 +1,9 @@
+"""Decision Transformer implementation."""
 from typing import Any, Optional, Sequence
+import dataclasses
 import jax
 import jax.numpy as jnp
+import flax
 import flax.linen as nn
 import ml_collections
 import optax
@@ -8,18 +11,17 @@ from flax.training import train_state
 from utils.flax_utils import ModuleDict, TrainState, nonpytree_field
 
 
+@dataclasses.dataclass
 class DecisionTransformerConfig:
     """Configuration for Decision Transformer model."""
-
-    def __init__(self, config):
-        self.max_length = config.max_length  # Maximum sequence length
-        self.state_dim = config.state_dim  # State dimensionality
-        self.action_dim = config.action_dim  # Action dimensionality
-        self.n_layer = config.n_layer  # Number of transformer layers
-        self.n_head = config.n_head  # Number of attention heads
-        self.n_embd = config.n_embd  # Embedding dimension
-        self.dropout = config.dropout  # Dropout rate
-        self.action_tanh = config.action_tanh  # Whether to use tanh on actions
+    max_length: int  # Maximum sequence length
+    state_dim: int  # State dimensionality
+    action_dim: int  # Action dimensionality
+    n_layer: int  # Number of transformer layers
+    n_head: int  # Number of attention heads
+    n_embd: int  # Embedding dimension
+    dropout: float  # Dropout rate
+    action_tanh: bool  # Whether to use tanh on actions
 
 
 class CausalSelfAttention(nn.Module):
@@ -124,6 +126,7 @@ class DecisionTransformer(nn.Module):
 
     def __call__(self, states, actions, returns_to_go, timesteps=None, deterministic=True):
         batch_size = states.shape[0]
+        self.seq_len = states.shape[1]
 
         if timesteps is None:
             timesteps = jnp.arange(states.shape[1])
@@ -213,7 +216,17 @@ class DecisionTransformerAgent(flax.struct.PyTreeNode):
         rng = jax.random.PRNGKey(seed)
         rng, init_rng = jax.random.split(rng, 2)
 
-        dt_config = DecisionTransformerConfig(config)
+        dt_config = DecisionTransformerConfig(
+            max_length=config.max_length,
+            state_dim=ex_observations.shape[-1],
+            action_dim=ex_actions.shape[-1],
+            n_layer=config.n_layer,
+            n_head=config.n_head,
+            n_embd=config.n_embd,
+            dropout=config.dropout,
+            action_tanh=config.action_tanh
+        )
+
         dt_def = DecisionTransformer(dt_config)
 
         # Initialize network
@@ -224,7 +237,7 @@ class DecisionTransformerAgent(flax.struct.PyTreeNode):
         network_args = {k: v[1] for k, v in network_info.items()}
 
         network_def = ModuleDict(networks)
-        network_tx = optax.adam(learning_rate=config['lr'])
+        network_tx = optax.adam(learning_rate=config.lr)
         network_params = network_def.init(init_rng, **network_args)['params']
         network = TrainState.create(network_def, network_params, tx=network_tx)
 
@@ -247,5 +260,7 @@ def get_default_config():
     config.lr = 1e-4  # Learning rate
     config.batch_size = 64  # Batch size
     config.train_steps = 100000  # Number of training steps
+
+    
 
     return config
