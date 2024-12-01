@@ -6,7 +6,7 @@ from agents.hiql import HIQLAgent
 from agents.qrl import QRLAgent
 from agents.sac import SACAgent
 from agents.bet import BETAgent  # Add this line to import BETAgent
-
+from agents.det import DecisionTransformerAgent
 agents = dict(
     crl=CRLAgent,
     gcbc=GCBCAgent,
@@ -16,4 +16,5 @@ agents = dict(
     qrl=QRLAgent,
     sac=SACAgent,
     bet=BETAgent,  # Add this line to register BETAgent
+    det = DecisionTransformerAgent,
 )
